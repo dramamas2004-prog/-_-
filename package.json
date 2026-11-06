@@ -1,8 +1,10 @@
 {
   "name": "noor-quran",
-  "version": "2.0.0",
+  "version": "2.2.0",
   "private": true,
-  "scripts": { "prepare:data": "node scripts/prepare.js" },
+  "scripts": {
+    "prepare:data": "node scripts/prepare.js"
+  },
   "dependencies": {
     "@capacitor/android": "^6.1.0",
     "@capacitor/app": "^6.0.0",
@@ -11,6 +13,7 @@
     "@capacitor/filesystem": "^6.0.0",
     "@capacitor/local-notifications": "^6.0.0",
     "@capacitor/share": "^6.0.0",
+    "@capacitor/status-bar": "^6.0.0",
     "quran-json": "^3.1.2"
   }
 }
