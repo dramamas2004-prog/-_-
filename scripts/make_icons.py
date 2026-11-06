@@ -17,6 +17,17 @@ try:
 except Exception as e:
     print('تعذر تعديل المانيفست:', e)
 
+# ---- ملء الشاشة حتى منطقة الكاميرا (يلزم عند إخفاء شريط الحالة) ----
+try:
+    sp = 'android/app/src/main/res/values/styles.xml'
+    x = open(sp, encoding='utf8').read()
+    if 'windowLayoutInDisplayCutoutMode' not in x:
+        x = re.sub(r'(<style name="[^"]*NoActionBar[^"]*"[^>]*>)', r'\1\n        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>', x)
+        open(sp, 'w', encoding='utf8').write(x)
+    print('تم ضبط ملء الشاشة')
+except Exception as e:
+    print('تعذر ضبط ملء الشاشة:', e)
+
 # ---- أيقونة الإشعار (نجمة بيضاء) ----
 def star(size):
     S = size * 8; im = Image.new('RGBA', (S, S), (0, 0, 0, 0)); d = ImageDraw.Draw(im)
@@ -70,3 +81,4 @@ os.makedirs(f'{RES}/mipmap-anydpi-v26', exist_ok=True)
 for name in ('ic_launcher.xml', 'ic_launcher_round.xml'):
     open(f'{RES}/mipmap-anydpi-v26/{name}', 'w').write(xml)
 print('تم توليد الأيقونات')
+
