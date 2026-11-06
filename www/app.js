@@ -18,7 +18,7 @@ const CAP = () => new Proxy({}, { get: (_, n) => plug(n) });
 const esc = t => String(t).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 
 /* ---------- الحالة ---------- */
-const DEF = { theme: 'night', fs: 30, fri: true, friT: '08:00', wirdOn: false, wirdT: '20:00', keep: false, dim: 0, taf: 'muyassar' };
+const DEF = { theme: 'night', fs: 30, fri: true, friT: '08:00', wirdOn: false, wirdT: '20:00', keep: false, dim: 0, taf: 'muyassar', read: 'pages' };
 let st = Object.assign({}, DEF, store.get('st', null) || { theme: store.get('theme', 'night'), fs: store.get('fs', 30), fri: store.get('fri', true) });
 const saveSt = () => store.set('st', st);
 const COLORS = ['#f5d547', '#5ed39b', '#5aa9ff', '#ff7aa8', '#b48cff'];
@@ -33,7 +33,7 @@ function setAnn(s, a, patch) {
   saveAnn();
 }
 let plan = store.get('plan', null), last = store.get('last', null), kahf = store.get('kahf', '');
-let Q = [], norm = [], FS = [], FA = [], off = [], M = null, TAF = null, touched = false, navDir = '', homeTab = 's', mFilter = 'all';
+let focusAyah = null, Q = [], norm = [], FS = [], FA = [], off = [], M = null, TAF = null, touched = false, navDir = '', homeTab = 's', mFilter = 'all';
 const idx = (s, a) => off[s - 1] + a - 1;
 const todayKey = () => { const d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate() };
 const isFri = () => new Date().getDay() === 5;
@@ -52,12 +52,12 @@ function rubLabel(r) {
 const pageOf = (s, a) => M ? M.pg[idx(s, a)] : 0;
 
 /* ---------- المظهر ---------- */
-const THEME_COLOR = { night: '#05120e', light: '#f2f2f7', sepia: '#efe2c6', warm: '#120b06' };
+const THEME_COLOR = { night: '#0a0a0b', light: '#fafafa', sepia: '#f1e6cb', warm: '#120b06' };
 function applyLook() {
   const keepC = ['reading', 'pagemode'].filter(c => document.body.classList.contains(c));
   document.body.className = 'theme-' + st.theme + ' ' + keepC.join(' ');
   document.documentElement.style.setProperty('--fs', st.fs + 'px');
-  document.querySelector('meta[name=theme-color]').content = THEME_COLOR[st.theme] || '#05120e';
+  document.querySelector('meta[name=theme-color]').content = THEME_COLOR[st.theme] || '#0a0a0b';
   $('#dim').style.opacity = (st.dim || 0) / 100;
 }
 const reading = on => { document.body.classList.toggle('reading', on); if (!on) readerOff(); };
@@ -76,9 +76,9 @@ function readerOff() {
   barsHide(); clearTimeout(barT); document.body.classList.remove('pagemode');
 }
 function announce(j, h) {
-  badge.innerHTML = j ? `<b>الجزء ${AR(j)}</b>${h ? `<small>الحزب ${AR(h)}</small>` : ''}` : `<b>الحزب ${AR(h)}</b>`;
+  badge.innerHTML = j ? `<span>الجزء ${AR(j)}</span>${h ? `<i></i><span>الحزب ${AR(h)}</span>` : ''}` : `<span>الحزب ${AR(h)}</span>`;
   badge.hidden = false; badge.classList.remove('show'); void badge.offsetWidth; badge.classList.add('show');
-  clearTimeout(bgT); bgT = setTimeout(() => { badge.classList.remove('show'); setTimeout(() => { badge.hidden = true; }, 600); }, 5000);
+  clearTimeout(bgT); bgT = setTimeout(() => { badge.classList.remove('show'); setTimeout(() => { badge.hidden = true; }, 500); }, 3000);
 }
 function announceBetween(a, b) {
   if (!M || b <= a) return; let cand = 0;
@@ -106,7 +106,7 @@ function openModal(html) {
   const c = modal.querySelector('[data-close]'); if (c) c.onclick = closeModal;
 }
 function closeModal() { modal.hidden = true; modal.innerHTML = ''; }
-let tt; const toast = m => { toastEl.textContent = m; toastEl.hidden = false; clearTimeout(tt); tt = setTimeout(() => toastEl.hidden = true, 2300); };
+let tt; const toast = m => { toastEl.textContent = m; toastEl.hidden = false; clearTimeout(tt); tt = setTimeout(() => toastEl.hidden = true, 3000); };
 
 /* ---------- الرجوع ---------- */
 function goBack() {
@@ -220,7 +220,7 @@ function home() {
   const g = now.getDate() + '/' + (now.getMonth() + 1) + '/' + now.getFullYear();
   let hj = ''; try { hj = new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura-nu-arab', { day: 'numeric', month: 'long', year: 'numeric' }).format(now); } catch {}
   const done = kahf === todayKey(), l = last && Q[last.s - 1], D = dayAyah();
-  const href = l ? (last.m === 'p' && M && last.p ? `#/p/${last.p}` : `#/s/${last.s}/${last.a}`) : '#/s/1/1';
+  const href = l ? `#/s/${last.s}/${last.a}` : '#/s/1/1';
   app.innerHTML = `
   <div class="head"><img class="logo" src="assets/logo.png" alt="">
     <div><div class="wd">${wd}</div><div class="gd">${g}</div><div class="hd">${hj}</div></div></div>
@@ -268,7 +268,7 @@ function surah(n, ayah, keep) {
   const s = Q[n - 1]; if (!s) { location.hash = '#/'; return; }
   rhead.hidden = true; rnum.hidden = true; bbar.hidden = true; tbar.hidden = false;
   tbar.innerHTML = `<button id="bk" aria-label="رجوع">›</button><div class="ttl"><b>${s.name}</b><small>${s.type === 'meccan' ? 'مكية' : 'مدنية'} · ${AR(s.v.length)} آية</small></div>
-    ${M ? '<button id="pv" aria-label="عرض الصفحات" style="font-size:16px">▤</button>' : ''}<button id="ft" aria-label="حجم الخط">Aa</button>`;
+    <button id="ft" aria-label="حجم الخط">Aa</button>`;
   barsHide();
   app.innerHTML = `
   <div class="page">
@@ -278,7 +278,6 @@ function surah(n, ayah, keep) {
   app.onclick = tapHandler;
   $('#bk').onclick = goBack;
   $('#ft').onclick = () => { st.fs = st.fs >= 44 ? 24 : st.fs + 4; saveSt(); applyLook(); barsShow(); };
-  const pv = $('#pv'); if (pv) pv.onclick = () => { const el = topAyahEl(); location.hash = '#/p/' + pageOf(n, el ? +el.dataset.a : 1); };
   app.scrollTop = 0;
   if (ayah) scrollToAyah(app.querySelector(`.a[data-a="${ayah}"]`));
   let prev = idx(n, ayah || 1) - 1;
@@ -319,11 +318,11 @@ function pageView(p, keep) {
   if (j < 30) { const d = M.pg[M.rubStart[j * 8 + 1]] - p; rem = d <= 0 ? `الجزء ${AR(j + 1)} يبدأ هنا` : `باقي ${pgsWord(d)} للجزء ${AR(j + 1)}`; }
   else { const d = 604 - p; rem = d ? `باقي ${pgsWord(d)} للختام` : 'ختام المصحف 🤍'; }
   rhead.hidden = false;
-  rhead.innerHTML = `<span class="rs">${names.join(' · ')}</span><span class="rc">الجزء ${AR(j)} · الحزب ${AR(hz)}</span><span class="rl">${rem}</span>`;
+  rhead.innerHTML = `<span class="rs">${names.join(' · ')}</span><span class="rc"><b>الجزء ${AR(j)}</b><i></i><b>الحزب ${AR(hz)}</b></span><span class="rl">${rem}</span>`;
   rnum.hidden = false; rnum.className = p % 2 ? 'r' : 'l'; rnum.textContent = AR(p);
   tbar.hidden = false; bbar.hidden = false;
   tbar.innerHTML = `<button id="bk" aria-label="رجوع">›</button><div class="ttl"><b>صفحة ${AR(p)}</b><small>${names.join(' · ')}</small></div>
-    <button id="sv" aria-label="عرض السورة" style="font-size:15px">☰</button>`;
+    <span style="width:40px"></span>`;
   bbar.innerHTML = `<button id="pp">السابقة ›</button><button class="cnt" id="pc">${AR(p)} / ${AR(604)}</button><button id="pn">‹ التالية</button>`;
   barsHide();
   let wbtn = '';
@@ -333,15 +332,16 @@ function pageView(p, keep) {
   const box = app.querySelector('.pgbox'), inner = $('#pgi');
   const fit = () => {
     const H = box.clientHeight; if (!H) return;
-    let lo = 13, hi = 34;
+    let lo = 12, hi = 34;
     for (let k = 0; k < 9; k++) { const m = (lo + hi) / 2; box.style.setProperty('--fs', m + 'px'); if (inner.offsetHeight <= H) lo = m; else hi = m; }
     box.style.setProperty('--fs', lo + 'px');
   };
+  if (focusAyah && focusAyah.a) { const t = app.querySelector(`.a[data-s="${focusAyah.s}"][data-a="${focusAyah.a}"]`); if (t) t.classList.add('flash'); }
+  focusAyah = null;
   fit(); setTimeout(fit, 250); if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
   const nav = (np, d) => { if (np < 1 || np > 604) return; navDir = d; location.replace('#/p/' + np); };
   $('#pn').onclick = () => { nav(p + 1, 'next'); }; $('#pp').onclick = () => { nav(p - 1, 'prev'); };
   $('#bk').onclick = goBack;
-  $('#sv').onclick = () => { location.hash = `#/s/${FS[i0]}/${FA[i0]}`; };
   $('#pc').onclick = () => {
     openModal(`<div class="mh"><b>اذهب إلى صفحة</b><button data-close>✕</button></div>
       <input class="q" id="gp" type="number" min="1" max="604" inputmode="numeric" placeholder="١ – ٦٠٤"><button class="btn" id="gb" style="width:100%">اذهب</button>`);
@@ -529,10 +529,13 @@ function settings() {
   const sw = (id, on) => `<button class="sw ${on ? 'on' : ''}" id="${id}"></button>`;
   app.innerHTML = `<h1 class="title">الإعدادات</h1><p class="sub">&nbsp;</p>
   <div class="set glass"><h3>المظهر</h3><div class="tgrid">
-    <button class="tb" data-t="night" style="background:#0b1f1a;color:#f3ecd8">ليلي</button>
-    <button class="tb" data-t="light" style="background:#f7f3e8;color:#1c2b26">نهاري</button>
+    <button class="tb" data-t="night" style="background:#0a0a0b;color:#ececec;border-color:#2a2a2d">ليلي</button>
+    <button class="tb" data-t="light" style="background:#fafafa;color:#111;border-color:#ddd">نهاري</button>
     <button class="tb" data-t="sepia" style="background:#efe2c6;color:#3b2a14">ورقي</button>
     <button class="tb" data-t="warm" style="background:#1b1108;color:#e9d6b2">ليلي دافئ 🌙</button></div></div>
+  <div class="set glass"><h3>وضع القراءة</h3>
+    <div class="seg2" id="rm"><button data-m="pages" ${M ? '' : 'disabled'}>ورقي<small>صفحات المصحف</small></button><button data-m="scroll">طولي<small>تمرير لأسفل</small></button></div>
+    <div class="mini">${M ? 'الورقي: صفحة كاملة بدون تمرير، تقلّبها بالسحب.' : 'الوضع الورقي يحتاج بيانات الصفحات وهي غير متوفرة في هذا الإصدار.'}</div></div>
   <div class="set glass"><h3>حجم الخط</h3><input type="range" id="r" min="22" max="48" value="${st.fs}">
     <div class="preview" id="pv">ٱلۡحَمۡدُ لِلَّهِ رَبِّ ٱلۡعَٰلَمِينَ</div></div>
   <div class="set glass"><h3>راحة العين</h3>
@@ -555,6 +558,8 @@ function settings() {
   const mark = () => $$('.tb').forEach(b => b.classList.toggle('on', b.dataset.t === st.theme));
   mark();
   $$('.tb').forEach(b => b.onclick = () => { st.theme = b.dataset.t; saveSt(); applyLook(); mark(); });
+  const rmk = () => $$('#rm button').forEach(b => b.classList.toggle('on', b.dataset.m === ((st.read === 'pages' && M) ? 'pages' : 'scroll')));
+  rmk(); $$('#rm button').forEach(b => b.onclick = () => { if (b.disabled) return; st.read = b.dataset.m; saveSt(); rmk(); toast(st.read === 'pages' ? 'الوضع الورقي' : 'الوضع الطولي'); });
   const pv = $('#pv'); pv.style.fontSize = st.fs + 'px';
   $('#r').oninput = e => { st.fs = +e.target.value; saveSt(); pv.style.fontSize = st.fs + 'px'; applyLook(); };
   $('#dm').oninput = e => { st.dim = +e.target.value; saveSt(); applyLook(); };
@@ -572,6 +577,15 @@ function settings() {
 /* ---------- التوجيه ---------- */
 function route(keepScroll) {
   const h = location.hash.slice(1) || '/', p = h.split('/');
+  if (!keepScroll) {
+    if (p[1] === 's' && st.read === 'pages' && M && Q[+p[2] - 1]) {
+      focusAyah = { s: +p[2], a: +p[3] || 0 };
+      location.replace('#/p/' + pageOf(+p[2], +p[3] || 1)); return;
+    }
+    if (p[1] === 'p' && (st.read === 'scroll' || !M) && M && +p[2] >= 1 && +p[2] <= 604) {
+      const i = M.pageStart[+p[2]]; location.replace(`#/s/${FS[i]}/${FA[i]}`); return;
+    }
+  }
   const y = app.scrollTop;
   hideSheet(); if (!keepScroll) closeModal();
   app.onscroll = null; app.onclick = null; app.ontouchstart = null; app.ontouchend = null;
