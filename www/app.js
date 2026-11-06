@@ -2,6 +2,7 @@
 'use strict';
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const app = $('#app'), sheet = $('#sheet'), toastEl = $('#toast'), modal = $('#modal');
+const tbar = $('#tbar'), bbar = $('#bbar'), badge = $('#badge'), rhead = $('#rhead'), rnum = $('#rnum');
 const AR = n => String(n).replace(/\d/g, d => '٠١٢٣٤٥٦٧٨٩'[d]);
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v) } catch { return d } },
@@ -53,12 +54,45 @@ const pageOf = (s, a) => M ? M.pg[idx(s, a)] : 0;
 /* ---------- المظهر ---------- */
 const THEME_COLOR = { night: '#05120e', light: '#f2f2f7', sepia: '#efe2c6', warm: '#120b06' };
 function applyLook() {
-  document.body.className = 'theme-' + st.theme + (document.body.classList.contains('reading') ? ' reading' : '');
+  const keepC = ['reading', 'pagemode'].filter(c => document.body.classList.contains(c));
+  document.body.className = 'theme-' + st.theme + ' ' + keepC.join(' ');
   document.documentElement.style.setProperty('--fs', st.fs + 'px');
   document.querySelector('meta[name=theme-color]').content = THEME_COLOR[st.theme] || '#05120e';
   $('#dim').style.opacity = (st.dim || 0) / 100;
 }
-const reading = on => document.body.classList.toggle('reading', on);
+const reading = on => { document.body.classList.toggle('reading', on); if (!on) readerOff(); };
+const pageMode = on => document.body.classList.toggle('pagemode', on);
+/* أشرطة القراءة: تظهر عند اللمس وتختفي بعد 7 ثوانٍ */
+let barT, bgT;
+function barsHide() { tbar.classList.add('hid'); bbar.classList.add('hid'); }
+function barsShow() {
+  tbar.classList.remove('hid'); if (!bbar.hidden) bbar.classList.remove('hid');
+  clearTimeout(barT);
+  barT = setTimeout(function chk() { if (!sheet.hidden || !modal.hidden) { barT = setTimeout(chk, 3000); return; } barsHide(); }, 7000);
+}
+const barsToggle = () => tbar.classList.contains('hid') ? barsShow() : barsHide();
+function readerOff() {
+  [tbar, bbar, badge, rhead, rnum].forEach(e => e.hidden = true);
+  barsHide(); clearTimeout(barT); document.body.classList.remove('pagemode');
+}
+function announce(j, h) {
+  badge.innerHTML = j ? `<b>الجزء ${AR(j)}</b>${h ? `<small>الحزب ${AR(h)}</small>` : ''}` : `<b>الحزب ${AR(h)}</b>`;
+  badge.hidden = false; badge.classList.remove('show'); void badge.offsetWidth; badge.classList.add('show');
+  clearTimeout(bgT); bgT = setTimeout(() => { badge.classList.remove('show'); setTimeout(() => { badge.hidden = true; }, 600); }, 5000);
+}
+function announceBetween(a, b) {
+  if (!M || b <= a) return; let cand = 0;
+  for (let r = 1; r <= 240; r += 4) { const i = M.rubStart[r]; if (i > a && i <= b) cand = r; }
+  if (cand) announce((cand - 1) % 8 === 0 ? (cand - 1) / 8 + 1 : 0, Math.floor((cand - 1) / 4) + 1);
+}
+const pgsWord = n => n === 1 ? 'صفحة واحدة' : n === 2 ? 'صفحتان' : n <= 10 ? AR(n) + ' صفحات' : AR(n) + ' صفحة';
+function tapHandler(e) {
+  const el = e.target.closest('.a');
+  if (el) { pick(+el.dataset.s, +el.dataset.a, el); barsShow(); return; }
+  if (!sheet.hidden) { hideSheet(); return; }
+  barsToggle();
+}
+function hint() { if (!store.get('hint2', false)) { store.set('hint2', true); setTimeout(() => toast('اضغط على الشاشة لإظهار الأدوات'), 600); } }
 let awake = false;
 function setAwake(on) {
   on = on && st.keep; if (on === awake) return; awake = on;
@@ -99,9 +133,9 @@ async function syncNotifs(ask) {
     await ln.cancel(ids);
     const hm = t => { const [h, m] = String(t).split(':').map(Number); return { hour: h || 0, minute: m || 0 }; };
     const list = [];
-    if (st.fri) list.push({ id: 101, title: 'جمعة مباركة 🌙', body: 'لا تنسَ قراءة سورة الكهف اليوم', smallIcon: 'ic_stat_noor',
+    if (st.fri) list.push({ id: 101, title: 'جمعة مباركة 🌙', body: 'لا تنسَ قراءة سورة الكهف اليوم', smallIcon: 'ic_stat_noor', largeIcon: 'noor_logo',
       schedule: { on: Object.assign({ weekday: 6 }, hm(st.friT)), allowWhileIdle: true } });
-    if (st.wirdOn && plan) list.push({ id: 102, title: 'وردك اليومي 📖', body: 'حان موعد وردك من القرآن الكريم', smallIcon: 'ic_stat_noor',
+    if (st.wirdOn && plan) list.push({ id: 102, title: 'وردك اليومي 📖', body: 'حان موعد وردك من القرآن الكريم', smallIcon: 'ic_stat_noor', largeIcon: 'noor_logo',
       schedule: { on: hm(st.wirdT), allowWhileIdle: true } });
     if (list.length) await ln.schedule({ notifications: list });
   } catch (e) {}
@@ -132,7 +166,7 @@ function dayAyah() {
   return { s: 2, a: 255 };
 }
 function topAyahEl() {
-  const top = app.getBoundingClientRect().top + 110;
+  const top = app.getBoundingClientRect().top + 24;
   for (const el of app.querySelectorAll('.a')) if (el.getBoundingClientRect().bottom > top) return el;
   return null;
 }
@@ -229,26 +263,36 @@ function home() {
 }
 
 /* ---------- قراءة بالسورة ---------- */
-function surah(n, ayah) {
-  reading(true); hideSheet(); touched = false; setAwake(true);
+function surah(n, ayah, keep) {
+  reading(true); pageMode(false); hideSheet(); touched = false; setAwake(true);
   const s = Q[n - 1]; if (!s) { location.hash = '#/'; return; }
+  rhead.hidden = true; rnum.hidden = true; bbar.hidden = true; tbar.hidden = false;
+  tbar.innerHTML = `<button id="bk" aria-label="رجوع">›</button><div class="ttl"><b>${s.name}</b><small>${s.type === 'meccan' ? 'مكية' : 'مدنية'} · ${AR(s.v.length)} آية</small></div>
+    ${M ? '<button id="pv" aria-label="عرض الصفحات" style="font-size:16px">▤</button>' : ''}<button id="ft" aria-label="حجم الخط">Aa</button>`;
+  barsHide();
   app.innerHTML = `
-  <div class="top glass"><button id="bk" aria-label="رجوع">›</button><b style="flex:1;text-align:center;font-family:AmiriQ;font-size:22px">${s.name}</b>
-    ${M ? '<button id="pv" aria-label="عرض الصفحات" style="font-size:16px">▤</button>' : ''}<button id="ft" aria-label="حجم الخط">Aa</button></div>
   <div class="page">
    <div class="banner glass"><small>${s.type === 'meccan' ? 'مكية' : 'مدنية'} · ${AR(s.v.length)} آية</small><h2>سورة ${s.name}</h2></div>
    ${bsmHTML(n)}
    <div class="ay txt">${s.v.map((t, i) => divider(idx(n, i + 1)) + ayahHTML(n, i + 1, t)).join('')}</div></div>`;
-  app.onclick = e => { const el = e.target.closest('.a'); if (el) pick(+el.dataset.s, +el.dataset.a, el); };
+  app.onclick = tapHandler;
   $('#bk').onclick = goBack;
-  $('#ft').onclick = () => { st.fs = st.fs >= 44 ? 24 : st.fs + 4; saveSt(); applyLook(); };
+  $('#ft').onclick = () => { st.fs = st.fs >= 44 ? 24 : st.fs + 4; saveSt(); applyLook(); barsShow(); };
   const pv = $('#pv'); if (pv) pv.onclick = () => { const el = topAyahEl(); location.hash = '#/p/' + pageOf(n, el ? +el.dataset.a : 1); };
   app.scrollTop = 0;
   if (ayah) scrollToAyah(app.querySelector(`.a[data-a="${ayah}"]`));
+  let prev = idx(n, ayah || 1) - 1;
+  if (M && ayah && !keep) announceBetween(prev, prev + 1);
+  if (!keep) hint();
   let tm; app.onscroll = () => {
     if (!sheet.hidden) hideSheet();
+    if (!tbar.classList.contains('hid')) barsHide();
     clearTimeout(tm); tm = setTimeout(() => {
-      const el = topAyahEl(); if (el) { last = { s: n, a: +el.dataset.a, m: 's' }; store.set('last', last); }
+      const el = topAyahEl();
+      if (el) {
+        const a = +el.dataset.a; last = { s: n, a, m: 's' }; store.set('last', last);
+        if (M) { const cur = idx(n, a); announceBetween(prev, cur); prev = cur; }
+      }
       if (n === 18 && isFri() && kahf !== todayKey() && app.scrollTop + app.clientHeight >= app.scrollHeight - 140) {
         kahf = todayKey(); store.set('kahf', kahf); toast('تقبّل الله ختمة الكهف ✨');
       }
@@ -257,34 +301,46 @@ function surah(n, ayah) {
 }
 
 /* ---------- قراءة بالصفحات (المصحف) ---------- */
-function pageView(p) {
+function pageView(p, keep) {
   if (!M || !(p >= 1 && p <= 604)) { location.hash = '#/'; return; }
-  reading(true); hideSheet(); touched = false; setAwake(true);
+  reading(true); pageMode(true); hideSheet(); touched = false; setAwake(true);
   const i0 = M.pageStart[p], i1 = p < 604 ? M.pageStart[p + 1] : 6236;
-  let html = '';
+  let html = '', hit = null;
   for (let i = i0; i < i1; i++) {
-    const s = FS[i], a = FA[i];
-    if (a === 1) html += `<div class="banner glass" style="padding:12px;margin:14px 0"><h2 style="font-size:28px">سورة ${Q[s - 1].name}</h2></div>${bsmHTML(s)}`;
-    else if (M.rubStart[M.rub[i]] === i) html += divider(i).replace(/صفحة [^·<]*·? ?/, '');
+    const s = FS[i], a = FA[i], r = M.rub[i];
+    if (a === 1) html += `<div class="banner glass"><h2>سورة ${Q[s - 1].name}</h2></div>${bsmHTML(s)}`;
+    if (M.rubStart[r] === i && (r - 1) % 4 === 0) hit = r;
     html += ayahHTML(s, a, Q[s - 1].v[a - 1]);
   }
-  const r = M.rub[i0], j = Math.ceil(r / 8), hz = Math.floor((r - 1) / 4) + 1;
+  const r0 = M.rub[i0], j = Math.ceil(r0 / 8), hz = Math.floor((r0 - 1) / 4) + 1;
   const names = [...new Set(Array.from({ length: i1 - i0 }, (_, k) => Q[FS[i0 + k] - 1].name))];
   last = { s: FS[i0], a: FA[i0], m: 'p', p }; store.set('last', last);
+  let rem;
+  if (j < 30) { const d = M.pg[M.rubStart[j * 8 + 1]] - p; rem = d <= 0 ? `الجزء ${AR(j + 1)} يبدأ هنا` : `باقي ${pgsWord(d)} للجزء ${AR(j + 1)}`; }
+  else { const d = 604 - p; rem = d ? `باقي ${pgsWord(d)} للختام` : 'ختام المصحف 🤍'; }
+  rhead.hidden = false;
+  rhead.innerHTML = `<span class="rs">${names.join(' · ')}</span><span class="rc">الجزء ${AR(j)} · الحزب ${AR(hz)}</span><span class="rl">${rem}</span>`;
+  rnum.hidden = false; rnum.className = p % 2 ? 'r' : 'l'; rnum.textContent = AR(p);
+  tbar.hidden = false; bbar.hidden = false;
+  tbar.innerHTML = `<button id="bk" aria-label="رجوع">›</button><div class="ttl"><b>صفحة ${AR(p)}</b><small>${names.join(' · ')}</small></div>
+    <button id="sv" aria-label="عرض السورة" style="font-size:15px">☰</button>`;
+  bbar.innerHTML = `<button id="pp">السابقة ›</button><button class="cnt" id="pc">${AR(p)} / ${AR(604)}</button><button id="pn">‹ التالية</button>`;
+  barsHide();
   let wbtn = '';
   if (plan && planDay() >= 0 && planDay() < plan.days && !plan.done[planDay()] && wirdRange(planDay())[1] === p)
     wbtn = '<button class="btn wbtn" id="wd">تمّ ورد اليوم ✓</button>';
-  app.innerHTML = `
-  <div class="top glass"><button id="bk" aria-label="رجوع">›</button>
-    <div class="ttl"><b>${names.join(' · ')}</b><small>الجزء ${AR(j)} · الحزب ${AR(hz)} · صفحة ${AR(p)}</small></div>
-    <button id="sv" aria-label="عرض السورة" style="font-size:15px">☰</button><button id="ft" aria-label="حجم الخط">Aa</button></div>
-  <div class="page"><div class="ay txt">${html}</div></div>
-  ${wbtn}
-  <div class="fnav glass"><button id="pp">السابقة ›</button><button class="cnt" id="pc">${AR(p)} / ${AR(604)}</button><button id="pn">‹ التالية</button></div>`;
+  app.innerHTML = `<div class="pgbox"><div class="ay txt pg" id="pgi">${html}</div></div>${wbtn}`;
+  const box = app.querySelector('.pgbox'), inner = $('#pgi');
+  const fit = () => {
+    const H = box.clientHeight; if (!H) return;
+    let lo = 13, hi = 34;
+    for (let k = 0; k < 9; k++) { const m = (lo + hi) / 2; box.style.setProperty('--fs', m + 'px'); if (inner.offsetHeight <= H) lo = m; else hi = m; }
+    box.style.setProperty('--fs', lo + 'px');
+  };
+  fit(); setTimeout(fit, 250); if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
   const nav = (np, d) => { if (np < 1 || np > 604) return; navDir = d; location.replace('#/p/' + np); };
-  $('#pn').onclick = () => nav(p + 1, 'next'); $('#pp').onclick = () => nav(p - 1, 'prev');
+  $('#pn').onclick = () => { nav(p + 1, 'next'); }; $('#pp').onclick = () => { nav(p - 1, 'prev'); };
   $('#bk').onclick = goBack;
-  $('#ft').onclick = () => { st.fs = st.fs >= 44 ? 24 : st.fs + 4; saveSt(); applyLook(); };
   $('#sv').onclick = () => { location.hash = `#/s/${FS[i0]}/${FA[i0]}`; };
   $('#pc').onclick = () => {
     openModal(`<div class="mh"><b>اذهب إلى صفحة</b><button data-close>✕</button></div>
@@ -293,15 +349,15 @@ function pageView(p) {
     $('#gb').onclick = go; $('#gp').focus();
   };
   const wd = $('#wd'); if (wd) wd.onclick = () => { plan.done[planDay()] = true; savePlan(); wd.remove(); toast('تقبّل الله ورد اليوم 🌟'); };
-  app.onclick = e => { const el = e.target.closest('.a'); if (el) pick(+el.dataset.s, +el.dataset.a, el); };
+  app.onclick = tapHandler;
   let x0 = 0, y0 = 0;
   app.ontouchstart = e => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; };
   app.ontouchend = e => {
     const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
     if (Math.abs(dx) > 80 && Math.abs(dy) < 60) dx > 0 ? nav(p + 1, 'next') : nav(p - 1, 'prev');
   };
-  app.scrollTop = 0;
-  app.onscroll = () => { if (!sheet.hidden) hideSheet(); };
+  if (hit && !keep) announce((hit - 1) % 8 === 0 ? (hit - 1) / 8 + 1 : 0, Math.floor((hit - 1) / 4) + 1);
+  if (!keep) hint();
 }
 
 /* ---------- قائمة الآية: علامة / لون / ملاحظة / تفسير / صورة ---------- */
@@ -523,8 +579,8 @@ function route(keepScroll) {
   const tab = (p[1] === 's' || p[1] === 'p' || h === '/') ? 'home' : p[1];
   const t = document.querySelector(`#tabs a[data-t="${tab}"]`); if (t) t.classList.add('on');
   if (p[1] !== 's' && p[1] !== 'p') setAwake(false);
-  if (p[1] === 's') surah(+p[2], +p[3] || 0);
-  else if (p[1] === 'p') pageView(+p[2]);
+  if (p[1] === 's') surah(+p[2], +p[3] || 0, keepScroll);
+  else if (p[1] === 'p') pageView(+p[2], keepScroll);
   else if (p[1] === 'search') search();
   else if (p[1] === 'marks') marksView();
   else if (p[1] === 'settings') settings();
@@ -549,7 +605,7 @@ Promise.all([jget('data/quran.json'), jget('data/meta.json')]).then(([d, meta]) 
     let ok = true; for (let p = 1; p <= 604; p++) if (pageStart[p] < 0) ok = false; for (let r = 1; r <= 240; r++) if (rubStart[r] < 0) ok = false;
     if (ok) M = { pg: meta.pg, rub: meta.rub, pageStart, rubStart };
   }
-  addEventListener('hashchange', () => route()); route();
+  addEventListener('hashchange', () => route()); addEventListener('resize', () => { if (/^#\/p\//.test(location.hash)) route(true); }); route();
   const asked = store.get('asked', false); store.set('asked', true); syncNotifs(!asked);
 }).catch(() => { app.innerHTML = '<div class="empty">تعذر تحميل بيانات القرآن</div>'; });
 })();
