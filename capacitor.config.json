@@ -2,5 +2,8 @@
   "appId": "com.noor.quran",
   "appName": "نور القرآن",
   "webDir": "www",
-  "android": { "backgroundColor": "#0b1f1a" }
+  "android": { "backgroundColor": "#05120e" },
+  "plugins": {
+    "LocalNotifications": { "smallIcon": "ic_stat_noor", "iconColor": "#D9B45B" }
+  }
 }

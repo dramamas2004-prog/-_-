@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#05120e">
+<title>نور القرآن</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="theme-night">
+<div id="app"></div>
+<nav id="tabs" class="glass">
+  <a href="#/" data-t="home"><svg viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M4 5.5v16M9 8h7"/></svg><span>السور</span></a>
+  <a href="#/search" data-t="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span>بحث</span></a>
+  <a href="#/marks" data-t="marks"><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4.5L6 21z"/></svg><span>العلامات</span></a>
+  <a href="#/settings" data-t="settings"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg><span>الإعدادات</span></a>
+</nav>
+<div id="sheet" class="glass" hidden></div>
+<div id="toast" class="glass" hidden></div>
+<div id="modal" hidden></div>
+<div id="dim"></div>
+<script src="app.js"></script>
+</body>
+</html>
