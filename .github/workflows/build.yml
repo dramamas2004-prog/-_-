@@ -20,8 +20,11 @@ jobs:
           curl -L -f -o www/fonts/AmiriQuran.ttf "https://github.com/google/fonts/raw/main/ofl/amiriquran/AmiriQuran-Regular.ttf"
           curl -L -f -o www/fonts/Cairo.ttf "https://github.com/google/fonts/raw/main/ofl/cairo/Cairo%5Bslnt%2Cwght%5D.ttf" || true
       - run: npx cap add android
-      - name: Apply app icon
-        run: cp -r resources/android/res/. android/app/src/main/res/
+      - name: Generate app icon
+        continue-on-error: true
+        run: |
+          pip install pillow
+          python3 scripts/make_icons.py
       - run: npx cap sync android
       - name: Build debug APK
         working-directory: android
