@@ -1,0 +1,6 @@
+{
+  "appId": "com.noor.quran",
+  "appName": "نور القرآن",
+  "webDir": "www",
+  "android": { "backgroundColor": "#0b1f1a" }
+}
