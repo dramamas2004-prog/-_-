@@ -8,6 +8,7 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v) } catch { return d } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)) } catch {} }
 };
+function hideStatusBar() { try { const r = CAP().StatusBar.hide(); if (r && r.catch) r.catch(() => {}); } catch {} }
 const _pl = {};
 const plug = n => {
   if (_pl[n]) return _pl[n];
@@ -116,7 +117,8 @@ function goBack() {
   if (!h || h === '#/') { try { CAP().App.exitApp(); } catch {} return; }
   if (history.length > 1) history.back(); else location.hash = '#/';
 }
-try { CAP().App && CAP().App.addListener('backButton', goBack); } catch {}
+try { CAP().App && CAP().App.addListener('backButton', goBack); CAP().App.addListener('appStateChange', s => { if (s && s.isActive) hideStatusBar(); }); } catch {}
+hideStatusBar();
 
 /* ---------- الإشعارات ---------- */
 async function syncNotifs(ask) {
@@ -148,11 +150,11 @@ function ayahHTML(s, a, t) {
   const c = o.c !== undefined ? ` style="background:${COLORS[o.c]}40"` : '';
   return `<span class="a${o.b ? ' mk' : ''}" data-s="${s}" data-a="${a}"${c}>${t}<span class="e">${AR(a)}</span>${o.n ? '<span class="nt">✎</span>' : ''}</span> `;
 }
-function divider(i) {
+function divider(i, pagesOnly) {
   if (!M) return '';
   const parts = [];
   if (M.pageStart[M.pg[i]] === i) parts.push('صفحة ' + AR(M.pg[i]));
-  if (M.rubStart[M.rub[i]] === i) parts.push(rubLabel(M.rub[i]));
+  if (!pagesOnly && M.rubStart[M.rub[i]] === i) parts.push(rubLabel(M.rub[i]));
   return parts.length ? `<span class="pgm">${parts.join(' · ')}</span>` : '';
 }
 const bsmHTML = s => (s !== 1 && s !== 9) ? '<div class="bsm">بِسۡمِ ٱللَّهِ ٱلرَّحۡمَٰنِ ٱلرَّحِيمِ</div>' : '';
@@ -223,7 +225,7 @@ function home() {
   const href = l ? `#/s/${last.s}/${last.a}` : '#/s/1/1';
   app.innerHTML = `
   <div class="head"><img class="logo" src="assets/logo.png" alt="">
-    <div><div class="wd">${wd}</div><div class="gd">${g}</div><div class="hd">${hj}</div></div></div>
+    <div class="hx"><div class="wd">${wd}</div><div class="dts"><span class="gd">${g}</span>${hj ? '<i></i>' : ''}<span class="hd">${hj}</span></div></div></div>
   ${isFri() && st.fri ? `<div class="fri glass ${done ? 'done' : ''}">
     <div class="bell">${BELL}${done ? '' : '<b class="dot"></b>'}</div>
     <div class="ft"><h3>${done ? 'ما شاء الله، أتممت سورة الكهف' : 'جمعة مباركة'}</h3>
@@ -234,8 +236,8 @@ function home() {
   <div class="daily glass"><small>✦ آية اليوم</small><div class="dt">﴿${Q[D.s - 1].v[D.a - 1]}﴾</div>
     <div class="dr">${Q[D.s - 1].name} · آية ${AR(D.a)}</div>
     <div class="drow"><button class="btn ghost" data-d="taf">📖 تفسير</button><button class="btn ghost" data-d="img">🖼 صورة</button><a class="btn ghost" href="#/s/${D.s}/${D.a}">افتح</a></div></div>
-  ${l ? `<div class="hero"><small>آخر قراءة</small><h2>سورة ${l.name}</h2><a class="btn" href="${href}">أكمل القراءة · آية ${AR(last.a)}</a></div>`
-     : `<div class="hero"><small>ابدأ رحلتك</small><h2>بسم الله الرحمن الرحيم</h2><a class="btn" href="#/s/1/1">ابدأ بالفاتحة</a></div>`}
+  ${l ? `<div class="hero"><div class="hl"><small>آخر قراءة · آية ${AR(last.a)}${M ? ' · صفحة ' + AR(pageOf(last.s, last.a)) : ''}</small><h2>سورة ${l.name}</h2></div><a class="btn" href="${href}">أكمل القراءة</a></div>`
+     : `<div class="hero"><div class="hl"><small>ابدأ رحلتك</small><h2>سورة الفاتحة</h2></div><a class="btn" href="#/s/1/1">ابدأ القراءة</a></div>`}
   ${M ? `<div class="seg glass"><button data-t="s" class="${homeTab === 's' ? 'on' : ''}">السور</button><button data-t="j" class="${homeTab === 'j' ? 'on' : ''}">الأجزاء والصفحات</button></div>` : ''}
   <div id="C"></div>`;
   $$('.seg button').forEach(b => b.onclick = () => { homeTab = b.dataset.t; home(); });
@@ -274,23 +276,24 @@ function surah(n, ayah, keep) {
   <div class="page">
    <div class="banner glass"><small>${s.type === 'meccan' ? 'مكية' : 'مدنية'} · ${AR(s.v.length)} آية</small><h2>سورة ${s.name}</h2></div>
    ${bsmHTML(n)}
-   <div class="ay txt">${s.v.map((t, i) => divider(idx(n, i + 1)) + ayahHTML(n, i + 1, t)).join('')}</div></div>`;
+   <div class="ay txt">${s.v.map((t, i) => divider(idx(n, i + 1), true) + ayahHTML(n, i + 1, t)).join('')}</div></div>`;
   app.onclick = tapHandler;
   $('#bk').onclick = goBack;
   $('#ft').onclick = () => { st.fs = st.fs >= 44 ? 24 : st.fs + 4; saveSt(); applyLook(); barsShow(); };
   app.scrollTop = 0;
   if (ayah) scrollToAyah(app.querySelector(`.a[data-a="${ayah}"]`));
-  let prev = idx(n, ayah || 1) - 1;
-  if (M && ayah && !keep) announceBetween(prev, prev + 1);
+  const updPg = () => { if (!M) return; const el = topAyahEl(); if (el) { rnum.textContent = 'صفحة ' + AR(pageOf(n, +el.dataset.a)); } };
+  if (M) { rnum.hidden = false; rnum.className = 'r pl'; rnum.textContent = 'صفحة ' + AR(pageOf(n, ayah || 1)); [400, 1700].forEach(t => setTimeout(() => { if (rnum.classList.contains('pl')) updPg(); }, t)); }
   if (!keep) hint();
+  let pt; 
   let tm; app.onscroll = () => {
     if (!sheet.hidden) hideSheet();
     if (!tbar.classList.contains('hid')) barsHide();
+    if (!pt) pt = setTimeout(() => { pt = 0; updPg(); }, 140);
     clearTimeout(tm); tm = setTimeout(() => {
       const el = topAyahEl();
       if (el) {
         const a = +el.dataset.a; last = { s: n, a, m: 's' }; store.set('last', last);
-        if (M) { const cur = idx(n, a); announceBetween(prev, cur); prev = cur; }
       }
       if (n === 18 && isFri() && kahf !== todayKey() && app.scrollTop + app.clientHeight >= app.scrollHeight - 140) {
         kahf = todayKey(); store.set('kahf', kahf); toast('تقبّل الله ختمة الكهف ✨');
@@ -299,48 +302,93 @@ function surah(n, ayah, keep) {
   };
 }
 
-/* ---------- قراءة بالصفحات (المصحف) ---------- */
-function pageView(p, keep) {
-  if (!M || !(p >= 1 && p <= 604)) { location.hash = '#/'; return; }
-  reading(true); pageMode(true); hideSheet(); touched = false; setAwake(true);
+/* ---------- قراءة بالصفحات (المصحف) — تنقل سلس بالسحب ---------- */
+let PG = null;
+function pageInfo(p) {
   const i0 = M.pageStart[p], i1 = p < 604 ? M.pageStart[p + 1] : 6236;
-  let html = '', hit = null;
-  for (let i = i0; i < i1; i++) {
-    const s = FS[i], a = FA[i], r = M.rub[i];
-    if (a === 1) html += `<div class="banner glass"><h2>سورة ${Q[s - 1].name}</h2></div>${bsmHTML(s)}`;
-    if (M.rubStart[r] === i && (r - 1) % 4 === 0) hit = r;
-    html += ayahHTML(s, a, Q[s - 1].v[a - 1]);
-  }
   const r0 = M.rub[i0], j = Math.ceil(r0 / 8), hz = Math.floor((r0 - 1) / 4) + 1;
   const names = [...new Set(Array.from({ length: i1 - i0 }, (_, k) => Q[FS[i0 + k] - 1].name))];
-  last = { s: FS[i0], a: FA[i0], m: 'p', p }; store.set('last', last);
+  let hit = null; for (let i = i0; i < i1; i++) { const r = M.rub[i]; if (M.rubStart[r] === i && (r - 1) % 4 === 0) hit = r; }
   let rem;
   if (j < 30) { const d = M.pg[M.rubStart[j * 8 + 1]] - p; rem = d <= 0 ? `الجزء ${AR(j + 1)} يبدأ هنا` : `باقي ${pgsWord(d)} للجزء ${AR(j + 1)}`; }
   else { const d = 604 - p; rem = d ? `باقي ${pgsWord(d)} للختام` : 'ختام المصحف 🤍'; }
+  return { i0, i1, j, hz, names, hit, rem };
+}
+function pageHTML(p) {
+  const { i0, i1 } = pageInfo(p); let html = '';
+  for (let i = i0; i < i1; i++) {
+    const s = FS[i], a = FA[i];
+    if (a === 1) html += `<div class="banner glass"><h2>سورة ${Q[s - 1].name}</h2></div>${bsmHTML(s)}`;
+    html += ayahHTML(s, a, Q[s - 1].v[a - 1]);
+  }
+  return html;
+}
+function fitPanel(el) {
+  const box = el.querySelector('.pgbox'), inner = el.querySelector('.pg'), H = box.clientHeight; if (!H) return;
+  let lo = 12, hi = 34;
+  for (let k = 0; k < 9; k++) { const m = (lo + hi) / 2; box.style.setProperty('--fs', m + 'px'); if (inner.offsetHeight <= H) lo = m; else hi = m; }
+  box.style.setProperty('--fs', lo + 'px');
+}
+const place = (el, x, anim) => { if (!el) return; el.style.transition = anim ? 'transform .42s cubic-bezier(.22,.8,.2,1)' : 'none'; el.style.transform = `translate3d(${x}px,0,0)`; };
+function mkPanel(q, x) {
+  const el = document.createElement('div'); el.className = 'pgp';
+  el.innerHTML = `<div class="pgbox"><div class="ay txt pg">${pageHTML(q)}</div></div>`;
+  PG.host.appendChild(el); fitPanel(el); place(el, x); return el;
+}
+function setPageInfo(p, keep) {
+  const I = pageInfo(p);
   rhead.hidden = false;
-  rhead.innerHTML = `<span class="rs">${names.join(' · ')}</span><span class="rc"><b>الجزء ${AR(j)}</b><i></i><b>الحزب ${AR(hz)}</b></span><span class="rl">${rem}</span>`;
+  rhead.innerHTML = `<span class="rs">${I.names.join(' · ')}</span><span class="rc"><b>الجزء ${AR(I.j)}</b><i></i><b>الحزب ${AR(I.hz)}</b></span><span class="rl">${I.rem}</span>`;
+  rhead.classList.remove('fade'); void rhead.offsetWidth; rhead.classList.add('fade');
   rnum.hidden = false; rnum.className = p % 2 ? 'r' : 'l'; rnum.textContent = AR(p);
+  const tb = tbar.querySelector('.ttl b'), ts = tbar.querySelector('.ttl small'), pc = $('#pc');
+  if (tb) tb.textContent = 'صفحة ' + AR(p); if (ts) ts.textContent = I.names.join(' · '); if (pc) pc.textContent = AR(p) + ' / ' + AR(604);
+  last = { s: FS[I.i0], a: FA[I.i0], m: 'p', p }; store.set('last', last);
+  if (location.hash !== '#/p/' + p) { try { history.replaceState(null, '', '#/p/' + p); } catch {} }
+  const old = $('#wd'); if (old) old.remove();
+  if (plan && planDay() >= 0 && planDay() < plan.days && !plan.done[planDay()] && wirdRange(planDay())[1] === p) {
+    const b = document.createElement('button'); b.className = 'btn wbtn'; b.id = 'wd'; b.textContent = 'تمّ ورد اليوم ✓';
+    b.onclick = e => { e.stopPropagation(); plan.done[planDay()] = true; savePlan(); b.remove(); toast('تقبّل الله ورد اليوم 🌟'); };
+    app.appendChild(b);
+  }
+  if (I.hit && !keep) announce((I.hit - 1) % 8 === 0 ? (I.hit - 1) / 8 + 1 : 0, Math.floor((I.hit - 1) / 4) + 1);
+}
+function pgSnap() { const { cur, next, prev, W } = PG; place(cur, 0, 1); place(next, -W, 1); place(prev, W, 1); }
+function pgCommit(dir) {
+  if (!PG || PG.busy) return;
+  const to = PG.p + dir; if (to < 1 || to > 604) return pgSnap();
+  const { cur, next, prev, W, tok } = PG, tgt = dir > 0 ? next : prev;
+  if (!tgt) return pgSnap();
+  PG.busy = true; hideSheet();
+  if (dir > 0) { place(cur, W, 1); place(next, 0, 1); } else { place(cur, -W, 1); place(prev, 0, 1); }
+  PG.p = to; setPageInfo(to);
+  setTimeout(() => {
+    if (!PG || PG.tok !== tok) return;
+    if (dir > 0) { if (prev) prev.remove(); PG.prev = cur; PG.cur = next; PG.next = null; }
+    else { if (next) next.remove(); PG.next = cur; PG.cur = prev; PG.prev = null; }
+    const nn = to + dir;
+    if (nn >= 1 && nn <= 604) { if (dir > 0) PG.next = mkPanel(nn, -W); else PG.prev = mkPanel(nn, W); }
+    PG.busy = false;
+  }, 450);
+}
+function pageView(p, keep) {
+  if (!M || !(p >= 1 && p <= 604)) { location.hash = '#/'; return; }
+  reading(true); pageMode(true); hideSheet(); touched = false; setAwake(true);
   tbar.hidden = false; bbar.hidden = false;
-  tbar.innerHTML = `<button id="bk" aria-label="رجوع">›</button><div class="ttl"><b>صفحة ${AR(p)}</b><small>${names.join(' · ')}</small></div>
-    <span style="width:40px"></span>`;
-  bbar.innerHTML = `<button id="pp">السابقة ›</button><button class="cnt" id="pc">${AR(p)} / ${AR(604)}</button><button id="pn">‹ التالية</button>`;
+  tbar.innerHTML = '<button id="bk" aria-label="رجوع">›</button><div class="ttl"><b></b><small></small></div><span style="width:40px"></span>';
+  bbar.innerHTML = '<button id="pp">السابقة ›</button><button class="cnt" id="pc"></button><button id="pn">‹ التالية</button>';
   barsHide();
-  let wbtn = '';
-  if (plan && planDay() >= 0 && planDay() < plan.days && !plan.done[planDay()] && wirdRange(planDay())[1] === p)
-    wbtn = '<button class="btn wbtn" id="wd">تمّ ورد اليوم ✓</button>';
-  app.innerHTML = `<div class="pgbox"><div class="ay txt pg" id="pgi">${html}</div></div>${wbtn}`;
-  const box = app.querySelector('.pgbox'), inner = $('#pgi');
-  const fit = () => {
-    const H = box.clientHeight; if (!H) return;
-    let lo = 12, hi = 34;
-    for (let k = 0; k < 9; k++) { const m = (lo + hi) / 2; box.style.setProperty('--fs', m + 'px'); if (inner.offsetHeight <= H) lo = m; else hi = m; }
-    box.style.setProperty('--fs', lo + 'px');
-  };
-  if (focusAyah && focusAyah.a) { const t = app.querySelector(`.a[data-s="${focusAyah.s}"][data-a="${focusAyah.a}"]`); if (t) t.classList.add('flash'); }
+  app.innerHTML = '<div id="pgs"></div>';
+  const host = $('#pgs');
+  PG = { host, p, W: host.clientWidth || window.innerWidth || 360, busy: false, tok: Math.random() };
+  const tok = PG.tok, W = PG.W;
+  PG.cur = mkPanel(p, 0);
+  setPageInfo(p, keep);
+  if (focusAyah && focusAyah.a) { const t = PG.cur.querySelector(`.a[data-s="${focusAyah.s}"][data-a="${focusAyah.a}"]`); if (t) t.classList.add('flash'); }
   focusAyah = null;
-  fit(); setTimeout(fit, 250); if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
-  const nav = (np, d) => { if (np < 1 || np > 604) return; navDir = d; location.replace('#/p/' + np); };
-  $('#pn').onclick = () => { nav(p + 1, 'next'); }; $('#pp').onclick = () => { nav(p - 1, 'prev'); };
+  setTimeout(() => { if (PG && PG.tok === tok) { if (p < 604) PG.next = mkPanel(p + 1, -W); if (p > 1) PG.prev = mkPanel(p - 1, W); } }, 60);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (PG && PG.tok === tok) [PG.cur, PG.next, PG.prev].forEach(e => e && fitPanel(e)); });
+  $('#pn').onclick = () => pgCommit(1); $('#pp').onclick = () => pgCommit(-1);
   $('#bk').onclick = goBack;
   $('#pc').onclick = () => {
     openModal(`<div class="mh"><b>اذهب إلى صفحة</b><button data-close>✕</button></div>
@@ -348,15 +396,22 @@ function pageView(p, keep) {
     const go = () => { const n = +$('#gp').value; if (n >= 1 && n <= 604) { closeModal(); location.hash = '#/p/' + n; } else toast('اكتب رقم من ١ إلى ٦٠٤'); };
     $('#gb').onclick = go; $('#gp').focus();
   };
-  const wd = $('#wd'); if (wd) wd.onclick = () => { plan.done[planDay()] = true; savePlan(); wd.remove(); toast('تقبّل الله ورد اليوم 🌟'); };
   app.onclick = tapHandler;
-  let x0 = 0, y0 = 0;
-  app.ontouchstart = e => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; };
-  app.ontouchend = e => {
-    const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
-    if (Math.abs(dx) > 80 && Math.abs(dy) < 60) dx > 0 ? nav(p + 1, 'next') : nav(p - 1, 'prev');
+  let sx = 0, sy = 0, dx = 0, t0 = 0, drag = false, lock = false;
+  host.ontouchstart = e => { if (PG.busy) return; sx = e.touches[0].clientX; sy = e.touches[0].clientY; dx = 0; t0 = Date.now(); drag = true; lock = false; };
+  host.ontouchmove = e => {
+    if (!drag) return;
+    dx = e.touches[0].clientX - sx; const dy = e.touches[0].clientY - sy;
+    if (!lock) { if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) lock = true; else return; }
+    if (!sheet.hidden) hideSheet(); if (!tbar.classList.contains('hid')) barsHide();
+    let x = dx; if ((x > 0 && !PG.next) || (x < 0 && !PG.prev)) x *= .25;
+    place(PG.cur, x); place(PG.next, x - PG.W); place(PG.prev, x + PG.W);
   };
-  if (hit && !keep) announce((hit - 1) % 8 === 0 ? (hit - 1) / 8 + 1 : 0, Math.floor((hit - 1) / 4) + 1);
+  host.ontouchend = () => {
+    if (!drag) return; drag = false; if (!lock) return;
+    const v = dx / Math.max(1, Date.now() - t0), thr = PG.W * .22;
+    if ((dx > thr || v > .5) && PG.next) pgCommit(1); else if ((dx < -thr || v < -.5) && PG.prev) pgCommit(-1); else pgSnap();
+  };
   if (!keep) hint();
 }
 
@@ -623,3 +678,4 @@ Promise.all([jget('data/quran.json'), jget('data/meta.json')]).then(([d, meta]) 
   const asked = store.get('asked', false); store.set('asked', true); syncNotifs(!asked);
 }).catch(() => { app.innerHTML = '<div class="empty">تعذر تحميل بيانات القرآن</div>'; });
 })();
+
