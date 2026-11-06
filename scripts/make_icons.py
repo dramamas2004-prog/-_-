@@ -1,17 +1,47 @@
-# يولّد أيقونة التطبيق واللوجو من ملف icon.png الموجود في جذر المستودع
-import os, sys
+# يعدّل صلاحيات الأندرويد، ويولّد أيقونة التطبيق واللوجو وأيقونة الإشعارات من icon.png
+import os, sys, math, re
 from PIL import Image, ImageFilter, ImageDraw
 
-SRC = 'icon.png'
 RES = 'android/app/src/main/res'
+MANIFEST = 'android/app/src/main/AndroidManifest.xml'
+
+# ---- صلاحيات الإشعارات والتنبيهات ----
+try:
+    x = open(MANIFEST, encoding='utf8').read()
+    for p in ('POST_NOTIFICATIONS', 'RECEIVE_BOOT_COMPLETED', 'WAKE_LOCK', 'VIBRATE', 'SCHEDULE_EXACT_ALARM'):
+        tag = f'<uses-permission android:name="android.permission.{p}"'
+        if tag not in x:
+            x = x.replace('</manifest>', f'    {tag} />\n</manifest>')
+    open(MANIFEST, 'w', encoding='utf8').write(x)
+    print('تم تحديث الصلاحيات')
+except Exception as e:
+    print('تعذر تعديل المانيفست:', e)
+
+# ---- أيقونة الإشعار (نجمة بيضاء) ----
+def star(size):
+    S = size * 8; im = Image.new('RGBA', (S, S), (0, 0, 0, 0)); d = ImageDraw.Draw(im)
+    c = S / 2; R = S * 0.46; r = S * 0.30
+    pts = []
+    for i in range(16):
+        ang = math.pi / 8 * i - math.pi / 2; rad = R if i % 2 == 0 else r
+        pts.append((c + rad * math.cos(ang), c + rad * math.sin(ang)))
+    d.polygon(pts, fill=(255, 255, 255, 255))
+    d.ellipse((c - S * .12, c - S * .12, c + S * .12, c + S * .12), fill=(0, 0, 0, 0))
+    return im.resize((size, size), Image.LANCZOS)
+for d, sz in {'mdpi': 24, 'hdpi': 36, 'xhdpi': 48, 'xxhdpi': 72, 'xxxhdpi': 96}.items():
+    f = f'{RES}/drawable-{d}'; os.makedirs(f, exist_ok=True); star(sz).save(f'{f}/ic_stat_noor.png')
+
+# ---- أيقونة التطبيق ----
+SRC = 'icon.png'
 if not os.path.exists(SRC):
     print('icon.png غير موجود - سيتم استخدام الأيقونة الافتراضية'); sys.exit(0)
-
 im = Image.open(SRC).convert('RGB')
 w, h = im.size; s = min(w, h)
 im = im.crop(((w - s) // 2, (h - s) // 2, (w - s) // 2 + s, (h - s) // 2 + s))
-
 os.makedirs('www/assets', exist_ok=True)
+# شعار الإشعار الكبير (يظهر بجانب نص الإشعار حتى لو التطبيق مغلق)
+os.makedirs(f'{RES}/drawable-nodpi', exist_ok=True)
+im.resize((192, 192), Image.LANCZOS).save(f'{RES}/drawable-nodpi/noor_logo.png')
 im.resize((320, 320), Image.LANCZOS).save('www/assets/logo.png', optimize=True)
 
 dens = {'mdpi': (48, 108), 'hdpi': (72, 162), 'xhdpi': (96, 216), 'xxhdpi': (144, 324), 'xxxhdpi': (192, 432)}
