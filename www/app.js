@@ -8,7 +8,15 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v) } catch { return d } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)) } catch {} }
 };
-function hideStatusBar() { try { const r = CAP().StatusBar.hide(); if (r && r.catch) r.catch(() => {}); } catch {} }
+function syncStatusBar() {
+  const sb = CAP().StatusBar; if (!sb) return;
+  const go = (m, a) => { try { const r = sb[m](a); if (r && r.catch) r.catch(() => {}); } catch {} };
+  if (st.full) { go('hide'); return; }
+  const dark = st.theme === 'night' || st.theme === 'warm';
+  go('show'); go('setOverlaysWebView', { overlay: false });
+  go('setBackgroundColor', { color: THEME_COLOR[st.theme] || '#0a0a0b' });
+  go('setStyle', { style: dark ? 'DARK' : 'LIGHT' });
+}
 const _pl = {};
 const plug = n => {
   if (_pl[n]) return _pl[n];
@@ -19,7 +27,7 @@ const CAP = () => new Proxy({}, { get: (_, n) => plug(n) });
 const esc = t => String(t).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 
 /* ---------- الحالة ---------- */
-const DEF = { theme: 'night', fs: 30, fri: true, friT: '08:00', wirdOn: false, wirdT: '20:00', keep: false, dim: 0, taf: 'muyassar', read: 'pages' };
+const DEF = { full: false, theme: 'night', fs: 30, fri: true, friT: '08:00', wirdOn: false, wirdT: '20:00', keep: false, dim: 0, taf: 'muyassar', read: 'pages' };
 let st = Object.assign({}, DEF, store.get('st', null) || { theme: store.get('theme', 'night'), fs: store.get('fs', 30), fri: store.get('fri', true) });
 const saveSt = () => store.set('st', st);
 const COLORS = ['#f5d547', '#5ed39b', '#5aa9ff', '#ff7aa8', '#b48cff'];
@@ -34,8 +42,9 @@ function setAnn(s, a, patch) {
   saveAnn();
 }
 let plan = store.get('plan', null), last = store.get('last', null), kahf = store.get('kahf', '');
-let focusAyah = null, Q = [], norm = [], FS = [], FA = [], off = [], M = null, TAF = null, touched = false, navDir = '', homeTab = 's', mFilter = 'all';
+let focusAyah = null, Q = [], normC = null, FS = [], FA = [], off = [], M = null, TAF = null, touched = false, navDir = '', homeTab = 's', mFilter = 'all';
 const idx = (s, a) => off[s - 1] + a - 1;
+function getNorm() { if (!normC) { normC = []; Q.forEach(s => s.v.forEach((t, i) => normC.push({ s: s.n, a: i + 1, t: strip(t) }))); } return normC; }
 const todayKey = () => { const d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate() };
 const isFri = () => new Date().getDay() === 5;
 const dayStart = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
@@ -60,6 +69,7 @@ function applyLook() {
   document.documentElement.style.setProperty('--fs', st.fs + 'px');
   document.querySelector('meta[name=theme-color]').content = THEME_COLOR[st.theme] || '#0a0a0b';
   $('#dim').style.opacity = (st.dim || 0) / 100;
+  syncStatusBar();
 }
 const reading = on => { document.body.classList.toggle('reading', on); if (!on) readerOff(); };
 const pageMode = on => document.body.classList.toggle('pagemode', on);
@@ -117,8 +127,7 @@ function goBack() {
   if (!h || h === '#/') { try { CAP().App.exitApp(); } catch {} return; }
   if (history.length > 1) history.back(); else location.hash = '#/';
 }
-try { CAP().App && CAP().App.addListener('backButton', goBack); CAP().App.addListener('appStateChange', s => { if (s && s.isActive) hideStatusBar(); }); } catch {}
-hideStatusBar();
+try { CAP().App && CAP().App.addListener('backButton', goBack); CAP().App.addListener('appStateChange', s => { if (s && s.isActive) syncStatusBar(); }); } catch {}
 
 /* ---------- الإشعارات ---------- */
 async function syncNotifs(ask) {
@@ -167,10 +176,12 @@ function dayAyah() {
   }
   return { s: 2, a: 255 };
 }
+let AYC = null;
 function topAyahEl() {
-  const top = app.getBoundingClientRect().top + 24;
-  for (const el of app.querySelectorAll('.a')) if (el.getBoundingClientRect().bottom > top) return el;
-  return null;
+  if (!AYC || !AYC.length || !AYC[0].isConnected) AYC = [...app.querySelectorAll('.a')];
+  const top = app.getBoundingClientRect().top + 24; let lo = 0, hi = AYC.length - 1, ans = null;
+  while (lo <= hi) { const m = (lo + hi) >> 1; if (AYC[m].getBoundingClientRect().bottom > top) { ans = AYC[m]; hi = m - 1; } else lo = m + 1; }
+  return ans;
 }
 function jump(el) {
   const r = el.getBoundingClientRect(), a = app.getBoundingClientRect();
@@ -215,12 +226,14 @@ function juzHTML() {
   }
   return h + '</div>';
 }
+const DF_W = new Intl.DateTimeFormat('ar-EG', { weekday: 'long' });
+let DF_H = null; try { DF_H = new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura-nu-arab', { day: 'numeric', month: 'long', year: 'numeric' }); } catch {}
 function home() {
   reading(false);
   const now = new Date();
-  const wd = new Intl.DateTimeFormat('ar-EG', { weekday: 'long' }).format(now);
+  const wd = DF_W.format(now);
   const g = now.getDate() + '/' + (now.getMonth() + 1) + '/' + now.getFullYear();
-  let hj = ''; try { hj = new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura-nu-arab', { day: 'numeric', month: 'long', year: 'numeric' }).format(now); } catch {}
+  let hj = ''; try { hj = DF_H ? DF_H.format(now) : ''; } catch {}
   const done = kahf === todayKey(), l = last && Q[last.s - 1], D = dayAyah();
   const href = l ? `#/s/${last.s}/${last.a}` : '#/s/1/1';
   app.innerHTML = `
@@ -276,7 +289,10 @@ function surah(n, ayah, keep) {
   <div class="page">
    <div class="banner glass"><small>${s.type === 'meccan' ? 'مكية' : 'مدنية'} · ${AR(s.v.length)} آية</small><h2>سورة ${s.name}</h2></div>
    ${bsmHTML(n)}
-   <div class="ay txt">${s.v.map((t, i) => divider(idx(n, i + 1), true) + ayahHTML(n, i + 1, t)).join('')}</div></div>`;
+   <div class="ay txt">${s.v.map((t, i) => divider(idx(n, i + 1), true) + ayahHTML(n, i + 1, t)).join('')}</div>
+   <div class="snav">${Q[n - 2] ? `<button data-g="${n - 1}"><small>‹ السورة السابقة</small><b>${Q[n - 2].name}</b></button>` : '<span></span>'}${Q[n] ? `<button data-g="${n + 1}"><small>السورة التالية ›</small><b>${Q[n].name}</b></button>` : '<span></span>'}</div></div>`;
+  AYC = null;
+  app.querySelectorAll('.snav button').forEach(b => b.onclick = e => { e.stopPropagation(); location.replace('#/s/' + b.dataset.g); });
   app.onclick = tapHandler;
   $('#bk').onclick = goBack;
   $('#ft').onclick = () => { st.fs = st.fs >= 44 ? 24 : st.fs + 4; saveSt(); applyLook(); barsShow(); };
@@ -303,7 +319,8 @@ function surah(n, ayah, keep) {
 }
 
 /* ---------- قراءة بالصفحات (المصحف) — تنقل سلس بالسحب ---------- */
-let PG = null;
+let PG = null; const FIT = {};
+const idle = f => window.requestIdleCallback ? requestIdleCallback(f, { timeout: 400 }) : setTimeout(f, 80);
 function pageInfo(p) {
   const i0 = M.pageStart[p], i1 = p < 604 ? M.pageStart[p + 1] : 6236;
   const r0 = M.rub[i0], j = Math.ceil(r0 / 8), hz = Math.floor((r0 - 1) / 4) + 1;
@@ -323,26 +340,30 @@ function pageHTML(p) {
   }
   return html;
 }
-function fitPanel(el) {
+function fitPanel(el, q) {
   const box = el.querySelector('.pgbox'), inner = el.querySelector('.pg'), H = box.clientHeight; if (!H) return;
+  const k = q + '_' + H + '_' + PG.W;
+  if (FIT[k]) { box.style.setProperty('--fs', FIT[k] + 'px'); return; }
   let lo = 12, hi = 34;
-  for (let k = 0; k < 9; k++) { const m = (lo + hi) / 2; box.style.setProperty('--fs', m + 'px'); if (inner.offsetHeight <= H) lo = m; else hi = m; }
-  box.style.setProperty('--fs', lo + 'px');
+  for (let i = 0; i < 8; i++) { const m = (lo + hi) / 2; box.style.setProperty('--fs', m + 'px'); if (inner.offsetHeight <= H) lo = m; else hi = m; }
+  FIT[k] = lo; box.style.setProperty('--fs', lo + 'px');
 }
-const place = (el, x, anim) => { if (!el) return; el.style.transition = anim ? 'transform .42s cubic-bezier(.22,.8,.2,1)' : 'none'; el.style.transform = `translate3d(${x}px,0,0)`; };
+const place = (el, x, ms) => { if (!el) return; el.style.transition = ms ? `transform ${ms}ms cubic-bezier(.22,.8,.2,1)` : 'none'; el.style.transform = `translate3d(${x}px,0,0)`; };
 function mkPanel(q, x) {
-  const el = document.createElement('div'); el.className = 'pgp';
+  const el = document.createElement('div'); el.className = 'pgp'; el.dataset.q = q;
   el.innerHTML = `<div class="pgbox"><div class="ay txt pg">${pageHTML(q)}</div></div>`;
-  PG.host.appendChild(el); fitPanel(el); place(el, x); return el;
+  PG.host.appendChild(el); fitPanel(el, q); place(el, x); return el;
 }
-function setPageInfo(p, keep) {
+function setPageHead(p) {
   const I = pageInfo(p);
   rhead.hidden = false;
   rhead.innerHTML = `<span class="rs">${I.names.join(' · ')}</span><span class="rc"><b>الجزء ${AR(I.j)}</b><i></i><b>الحزب ${AR(I.hz)}</b></span><span class="rl">${I.rem}</span>`;
-  rhead.classList.remove('fade'); void rhead.offsetWidth; rhead.classList.add('fade');
   rnum.hidden = false; rnum.className = p % 2 ? 'r' : 'l'; rnum.textContent = AR(p);
   const tb = tbar.querySelector('.ttl b'), ts = tbar.querySelector('.ttl small'), pc = $('#pc');
   if (tb) tb.textContent = 'صفحة ' + AR(p); if (ts) ts.textContent = I.names.join(' · '); if (pc) pc.textContent = AR(p) + ' / ' + AR(604);
+}
+function persistPage(p, keep) {
+  const I = pageInfo(p);
   last = { s: FS[I.i0], a: FA[I.i0], m: 'p', p }; store.set('last', last);
   if (location.hash !== '#/p/' + p) { try { history.replaceState(null, '', '#/p/' + p); } catch {} }
   const old = $('#wd'); if (old) old.remove();
@@ -353,23 +374,35 @@ function setPageInfo(p, keep) {
   }
   if (I.hit && !keep) announce((I.hit - 1) % 8 === 0 ? (I.hit - 1) / 8 + 1 : 0, Math.floor((I.hit - 1) / 4) + 1);
 }
-function pgSnap() { const { cur, next, prev, W } = PG; place(cur, 0, 1); place(next, -W, 1); place(prev, W, 1); }
-function pgCommit(dir) {
+function pgEnsure() {
+  const W = PG.W;
+  if (PG.p < 604 && !PG.next) PG.next = mkPanel(PG.p + 1, -W);
+  if (PG.p > 1 && !PG.prev) PG.prev = mkPanel(PG.p - 1, W);
+}
+function pgSnap(ms) { const { cur, next, prev, W } = PG; ms = ms || 260; place(cur, 0, ms); place(next, -W, ms); place(prev, W, ms); }
+function pgCommit(dir, ms) {
   if (!PG || PG.busy) return;
   const to = PG.p + dir; if (to < 1 || to > 604) return pgSnap();
-  const { cur, next, prev, W, tok } = PG, tgt = dir > 0 ? next : prev;
-  if (!tgt) return pgSnap();
+  const W = PG.W, tok = PG.tok;
+  if (dir > 0 && !PG.next) PG.next = mkPanel(to, -W);
+  if (dir < 0 && !PG.prev) PG.prev = mkPanel(to, W);
+  const { cur, next, prev } = PG; ms = ms || 320;
   PG.busy = true; hideSheet();
-  if (dir > 0) { place(cur, W, 1); place(next, 0, 1); } else { place(cur, -W, 1); place(prev, 0, 1); }
-  PG.p = to; setPageInfo(to);
+  if (dir > 0) { place(cur, W, ms); place(next, 0, ms); } else { place(cur, -W, ms); place(prev, 0, ms); }
+  PG.p = to;
+  requestAnimationFrame(() => setPageHead(to));
   setTimeout(() => {
     if (!PG || PG.tok !== tok) return;
     if (dir > 0) { if (prev) prev.remove(); PG.prev = cur; PG.cur = next; PG.next = null; }
     else { if (next) next.remove(); PG.next = cur; PG.cur = prev; PG.prev = null; }
-    const nn = to + dir;
-    if (nn >= 1 && nn <= 604) { if (dir > 0) PG.next = mkPanel(nn, -W); else PG.prev = mkPanel(nn, W); }
     PG.busy = false;
-  }, 450);
+    idle(() => {
+      if (!PG || PG.tok !== tok) return;
+      const nn = to + dir;
+      if (nn >= 1 && nn <= 604 && !(dir > 0 ? PG.next : PG.prev)) { if (dir > 0) PG.next = mkPanel(nn, -W); else PG.prev = mkPanel(nn, W); }
+      persistPage(to);
+    });
+  }, ms + 30);
 }
 function pageView(p, keep) {
   if (!M || !(p >= 1 && p <= 604)) { location.hash = '#/'; return; }
@@ -383,11 +416,14 @@ function pageView(p, keep) {
   PG = { host, p, W: host.clientWidth || window.innerWidth || 360, busy: false, tok: Math.random() };
   const tok = PG.tok, W = PG.W;
   PG.cur = mkPanel(p, 0);
-  setPageInfo(p, keep);
+  setPageHead(p); persistPage(p, keep);
   if (focusAyah && focusAyah.a) { const t = PG.cur.querySelector(`.a[data-s="${focusAyah.s}"][data-a="${focusAyah.a}"]`); if (t) t.classList.add('flash'); }
   focusAyah = null;
-  setTimeout(() => { if (PG && PG.tok === tok) { if (p < 604) PG.next = mkPanel(p + 1, -W); if (p > 1) PG.prev = mkPanel(p - 1, W); } }, 60);
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (PG && PG.tok === tok) [PG.cur, PG.next, PG.prev].forEach(e => e && fitPanel(e)); });
+  idle(() => { if (PG && PG.tok === tok) pgEnsure(); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => {
+    if (!PG || PG.tok !== tok) return; Object.keys(FIT).forEach(k => delete FIT[k]);
+    [[PG.cur, PG.p], [PG.next, PG.p + 1], [PG.prev, PG.p - 1]].forEach(([e, q]) => e && fitPanel(e, q));
+  });
   $('#pn').onclick = () => pgCommit(1); $('#pp').onclick = () => pgCommit(-1);
   $('#bk').onclick = goBack;
   $('#pc').onclick = () => {
@@ -397,21 +433,28 @@ function pageView(p, keep) {
     $('#gb').onclick = go; $('#gp').focus();
   };
   app.onclick = tapHandler;
-  let sx = 0, sy = 0, dx = 0, t0 = 0, drag = false, lock = false;
-  host.ontouchstart = e => { if (PG.busy) return; sx = e.touches[0].clientX; sy = e.touches[0].clientY; dx = 0; t0 = Date.now(); drag = true; lock = false; };
-  host.ontouchmove = e => {
+  /* السحب: يتبع الإصبع مباشرة عبر transform فقط */
+  let sx = 0, sy = 0, dx = 0, vx = 0, px = 0, pt = 0, drag = false, lock = false, raf = 0;
+  const apply = () => { raf = 0; let x = dx; if ((x > 0 && !PG.next) || (x < 0 && !PG.prev)) x *= .25;
+    place(PG.cur, x); place(PG.next, x - PG.W); place(PG.prev, x + PG.W); };
+  host.addEventListener('touchstart', e => {
+    if (PG.busy) return; pgEnsure();
+    sx = px = e.touches[0].clientX; sy = e.touches[0].clientY; dx = vx = 0; pt = e.timeStamp; drag = true; lock = false;
+    place(PG.cur, 0); place(PG.next, -PG.W); place(PG.prev, PG.W);
+  }, { passive: true });
+  host.addEventListener('touchmove', e => {
     if (!drag) return;
-    dx = e.touches[0].clientX - sx; const dy = e.touches[0].clientY - sy;
-    if (!lock) { if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) lock = true; else return; }
-    if (!sheet.hidden) hideSheet(); if (!tbar.classList.contains('hid')) barsHide();
-    let x = dx; if ((x > 0 && !PG.next) || (x < 0 && !PG.prev)) x *= .25;
-    place(PG.cur, x); place(PG.next, x - PG.W); place(PG.prev, x + PG.W);
-  };
-  host.ontouchend = () => {
+    const x = e.touches[0].clientX; dx = x - sx; const dy = e.touches[0].clientY - sy;
+    if (!lock) { if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) { lock = true; if (!sheet.hidden) hideSheet(); if (!tbar.classList.contains('hid')) barsHide(); } else return; }
+    const dt = e.timeStamp - pt; if (dt > 0) vx = .8 * ((x - px) / dt) + .2 * vx; px = x; pt = e.timeStamp;
+    if (!raf) raf = requestAnimationFrame(apply);
+  }, { passive: true });
+  host.addEventListener('touchend', () => {
     if (!drag) return; drag = false; if (!lock) return;
-    const v = dx / Math.max(1, Date.now() - t0), thr = PG.W * .22;
-    if ((dx > thr || v > .5) && PG.next) pgCommit(1); else if ((dx < -thr || v < -.5) && PG.prev) pgCommit(-1); else pgSnap();
-  };
+    if (raf) { cancelAnimationFrame(raf); raf = 0; apply(); }
+    const thr = PG.W * .2, ms = Math.max(200, 330 - Math.min(Math.abs(dx), PG.W) * .25);
+    if ((dx > thr || vx > .45) && PG.next) pgCommit(1, ms); else if ((dx < -thr || vx < -.45) && PG.prev) pgCommit(-1, ms); else pgSnap();
+  }, { passive: true });
   if (!keep) hint();
 }
 
@@ -536,7 +579,8 @@ function search() {
     const k = strip(v.trim()), R = $('#R');
     if (k.length < 2) { R.innerHTML = '<div class="empty">اكتب حرفين على الأقل</div>'; return; }
     const out = [];
-    for (let i = 0; i < norm.length && out.length < 60; i++) if (norm[i].t.includes(k)) out.push(norm[i]);
+    const N = getNorm();
+    for (let i = 0; i < N.length && out.length < 60; i++) if (N[i].t.includes(k)) out.push(N[i]);
     R.innerHTML = out.length ? out.map(r => `<a class="res glass" href="#/s/${r.s}/${r.a}">
       <small>${Q[r.s - 1].name} · آية ${AR(r.a)}</small><p>${Q[r.s - 1].v[r.a - 1]}</p></a>`).join('')
       : '<div class="empty">لا توجد نتائج</div>';
@@ -593,6 +637,8 @@ function settings() {
     <div class="mini">${M ? 'الورقي: صفحة كاملة بدون تمرير، تقلّبها بالسحب.' : 'الوضع الورقي يحتاج بيانات الصفحات وهي غير متوفرة في هذا الإصدار.'}</div></div>
   <div class="set glass"><h3>حجم الخط</h3><input type="range" id="r" min="22" max="48" value="${st.fs}">
     <div class="preview" id="pv">ٱلۡحَمۡدُ لِلَّهِ رَبِّ ٱلۡعَٰلَمِينَ</div></div>
+  <div class="set glass"><h3>شريط الحالة</h3>
+    <div class="row"><div>ملء الشاشة بالكامل<div class="mini" style="margin:3px 0 0">يخفي شريط الإشعارات (قد تغطي الكاميرا حافة الشاشة العلوية)</div></div>${sw('fl', st.full)}</div></div>
   <div class="set glass"><h3>راحة العين</h3>
     <div class="mini" style="margin:0 0 6px">تعتيم الشاشة داخل التطبيق</div><input type="range" id="dm" min="0" max="60" value="${st.dim}">
     <div class="row" style="margin-top:12px"><div>إبقاء الشاشة مضاءة أثناء القراءة</div>${sw('kp', st.keep)}</div></div>
@@ -619,6 +665,7 @@ function settings() {
   $('#r').oninput = e => { st.fs = +e.target.value; saveSt(); pv.style.fontSize = st.fs + 'px'; applyLook(); };
   $('#dm').oninput = e => { st.dim = +e.target.value; saveSt(); applyLook(); };
   const tog = (id, k, fn) => { const b = $('#' + id); if (!b) return; b.onclick = () => { st[k] = !st[k]; saveSt(); b.classList.toggle('on', st[k]); fn && fn(); }; };
+  tog('fl', 'full', () => syncStatusBar());
   tog('kp', 'keep', () => { if (!st.keep) setAwake(false); });
   tog('sf', 'fri', () => syncNotifs(true)); tog('sw2', 'wirdOn', () => { if (st.wirdOn && !plan) { toast('اختر مدة الختمة أولًا'); } syncNotifs(true); });
   const tm = (id, k) => { const i = $('#' + id); if (i) i.onchange = () => { st[k] = i.value || st[k]; saveSt(); syncNotifs(true); toast('تم حفظ الوقت'); }; };
@@ -656,7 +703,7 @@ function route(keepScroll) {
   else home();
   if (keepScroll) { app.scrollTop = y; touched = true; return; }
   app.classList.remove('enter', 'slide-next', 'slide-prev'); void app.offsetWidth;
-  app.classList.add(p[1] === 'p' && navDir ? 'slide-' + navDir : 'enter'); navDir = '';
+  if (p[1] !== 'p') app.classList.add('enter'); navDir = '';
 }
 
 /* ---------- التشغيل ---------- */
@@ -666,7 +713,7 @@ const jget = u => fetch(u).then(r => r.ok ? r.json() : null).catch(() => null);
 Promise.all([jget('data/quran.json'), jget('data/meta.json')]).then(([d, meta]) => {
   if (!d) throw 0;
   Q = d; let o = 0;
-  d.forEach((s, si) => { off[si] = o; o += s.v.length; s.v.forEach((t, i) => { FS.push(s.n); FA.push(i + 1); norm.push({ s: s.n, a: i + 1, t: strip(t) }); }); });
+  d.forEach((s, si) => { off[si] = o; o += s.v.length; s.v.forEach((t, i) => { FS.push(s.n); FA.push(i + 1); }); });
   if (meta && meta.pg && meta.pg.length === 6236 && meta.rub && meta.rub.length === 6236) {
     const pageStart = new Array(606).fill(-1), rubStart = new Array(242).fill(-1);
     meta.pg.forEach((p, i) => { if (pageStart[p] < 0) pageStart[p] = i; });
@@ -678,4 +725,3 @@ Promise.all([jget('data/quran.json'), jget('data/meta.json')]).then(([d, meta]) 
   const asked = store.get('asked', false); store.set('asked', true); syncNotifs(!asked);
 }).catch(() => { app.innerHTML = '<div class="empty">تعذر تحميل بيانات القرآن</div>'; });
 })();
-
